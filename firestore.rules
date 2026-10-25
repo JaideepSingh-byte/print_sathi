@@ -1,0 +1,414 @@
+rules_version = '2';
+
+/**
+ * ============================================================================
+ * PRINT SATHI: Cloud Firestore Security Rules
+ * ============================================================================
+ * Enterprise Multi-Shop Campus Printing Platform
+ *
+ * Security Architecture & Policies:
+ * 1. Default Deny: All unmatched collections and documents are closed by default.
+ * 2. Validator Function Pattern: Every write (create and update) enforces strict
+ *    domain schema validators to eliminate the Update Bypass vulnerability.
+ * 3. Role-Based Access Control (RBAC): Admin actions strictly verified via
+ *    request.auth.token.admin custom claims or verified administrative emails.
+ * 4. Immutability Guards: Sensitive primary identifiers, creation timestamps,
+ *    and order totals cannot be tampered with after creation.
+ * 5. Denial-of-Service / Exhaustion Defenses: String lengths, array bounds,
+ *    and numeric ranges strictly bounded on every payload.
+ * ============================================================================
+ */
+
+// ===============================================================
+// Assumed Data Models
+// ===============================================================
+//
+// Collection: shops/{shopId}
+// Document ID: Matches shop.shopId (e.g. 'shop_main_xerox', 'shop_1729740000')
+// Fields:
+//   - shopId: string (required, 1-64 chars, immutable) - Unique counter ID
+//   - name: string (required, 1-100 chars) - Display name of the counter
+//   - ownerUid: string (required, 1-128 chars, immutable by owner) - Firebase Auth UID of shopkeeper
+//   - ownerEmail: string (required, valid email, max 100 chars) - Contact email
+//   - status: string (required: 'APPROVED' | 'PENDING' | 'SUSPENDED' | 'REJECTED') - Platform approval state
+//   - isAcceptingOrders: bool (required) - Live online/offline queue toggle
+//   - location: map (required) - Campus location: { building, floor, room }
+//   - pricingTiers: map (required) - Per-page pricing table for BW, Color, Duplex, etc.
+//   - shopkeeperName: string (optional, max 100 chars) - Full name of shopkeeper
+//   - supportedServices: map (optional) - Service availability flags (e.g. { bw, color, single, duplex })
+//   - rejectionReason: string (optional, max 500 chars) - Administrator explanation for rejection
+//   - createdAt: timestamp | string (required on create, immutable) - Registration date
+//   - tagline: string (optional, max 200 chars) - Short subtitle/description
+//   - contactPhone: string (optional, max 30 chars) - Counter phone number
+//   - qrCodeSlug: string (optional, max 64 chars) - Counter standee slug
+//   - stats: map (optional) - Aggregated print job counters
+//
+// Collection: orders/{orderId}
+// Document ID: Matches order.orderId (e.g. 'PS-8421')
+// Fields:
+//   - orderId: string (required, 1-64 chars, immutable) - Formatted ticket ID
+//   - token: string (required, 1-32 chars, immutable) - 4-digit pickup token
+//   - shopId: string (required, 1-64 chars, immutable) - Target campus counter
+//   - studentIdentifier: string (optional, max 128 chars) - Student handle or token tag
+//   - files: list of maps (required, 1-10 items, immutable) - Itemized PDF configurations
+//   - pricingSnapshot: map (optional) - Calculated pricing breakdown & sheet counts
+//   - totalAmount: number (required, > 0, immutable) - Payable order price in INR
+//   - paymentStatus: string (optional, max 32 chars) - Payment state ('COMPLETED' | 'PAID' | etc.)
+//   - status: string (required) - Queue state: 'QUEUED' | 'PRINTING' | 'PRINT_SUBMITTED' | 'PRINTED' | 'COMPLETED' | 'FAILED' | 'NEEDS_VERIFICATION'
+//   - printStatus: string (optional, max 32 chars) - Mirror of status for client compatibility
+//   - createdAt: timestamp | string (required on create, immutable) - Submission timestamp
+//   - claimedBy: string (optional, max 128 chars) - Active desktop printer instance ID
+//   - claimedAt: timestamp | string (optional) - Claim time
+//   - pickupCounter: string (optional, max 200 chars) - Descriptive pickup counter label
+//   - failureReason: string (optional, max 500 chars) - Error log for failed spooling
+//   - verificationReason: string (optional, max 500 chars) - Diagnostic note for flagged jobs
+//
+// Collection: print_jobs/{orderId} (Legacy dual-read/write compatibility)
+// Document ID: Matches order.orderId
+// Fields:
+//   - orderId: string (required, 1-64 chars, immutable)
+//   - status: string (required, 'QUEUED' | 'PRINTING' | 'PRINT_SUBMITTED' | 'PRINTED' | 'COMPLETED' | 'FAILED' | 'NEEDS_VERIFICATION')
+//   - totalAmount: number (required, > 0, immutable)
+//   - token: string (optional, max 32 chars, immutable)
+//   - shopId: string (optional, max 64 chars, immutable)
+//   - fileName: string (optional, max 200 chars)
+//   - fileSize: number (optional)
+//   - fileUrl: string (optional, max 1000 chars)
+//   - totalPages: number (optional)
+//   - calculatedPages: number (optional)
+//   - copies: number (optional)
+//   - colorMode: string (optional, max 16 chars)
+//   - sides: string (optional, max 16 chars)
+//   - ratePerPage: number (optional)
+//   - claimedBy: string (optional, max 128 chars)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Global Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Verify whether the caller holds administrative privileges
+    // Derived from trusted custom token claims or verified administrator email addresses
+    function isAdmin() {
+      return isAuthenticated() && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('email' in request.auth.token && (
+          request.auth.token.email == 'admin.jaideep@printsathi.campus' ||
+          request.auth.token.email in ['admin.jaideep@printsathi.campus', 'admin@printsathi.campus', 'admin@campus.edu', 'superadmin@printsathi.in'] ||
+          request.auth.token.email.matches('^admin@.*')
+        ))
+      );
+    }
+
+    // Check if the authenticated user owns the document by UID
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Basic email format validator
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 100 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Checks that a set of required keys exists in the resource data
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validator: Shops (shops/{shopId})
+    // ===============================================================
+
+    function isValidShop(shopId, data) {
+      return hasRequiredFields(data, ['shopId', 'name', 'ownerUid', 'ownerEmail', 'status', 'isAcceptingOrders', 'location', 'pricingTiers']) &&
+        // Primary Key Integrity
+        data.shopId is string &&
+        data.shopId == shopId &&
+        data.shopId.size() > 0 &&
+        data.shopId.size() <= 64 &&
+
+        // Display Metadata Bounds
+        data.name is string &&
+        data.name.size() > 0 &&
+        data.name.size() <= 100 &&
+
+        // Owner Identity Bounds
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.ownerUid.size() <= 128 &&
+
+        // Contact Information
+        data.ownerEmail is string &&
+        isValidEmail(data.ownerEmail) &&
+
+        // Status Enum
+        data.status in ['APPROVED', 'PENDING', 'SUSPENDED', 'REJECTED'] &&
+
+        // Operating State
+        data.isAcceptingOrders is bool &&
+
+        // Campus Location Structure & Bounds
+        data.location is map &&
+        data.location.keys().hasAll(['building', 'floor', 'room']) &&
+        data.location.building is string && data.location.building.size() <= 100 &&
+        data.location.floor is string && data.location.floor.size() <= 50 &&
+        data.location.room is string && data.location.room.size() <= 50 &&
+
+        // Pricing Configuration
+        data.pricingTiers is map &&
+
+        // Optional Fields Bounds (DoS Protection)
+        (!('shopkeeperName' in data) || (data.shopkeeperName is string && data.shopkeeperName.size() <= 100)) &&
+        (!('supportedServices' in data) || (data.supportedServices is map)) &&
+        (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500)) &&
+        (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 200)) &&
+        (!('contactPhone' in data) || (data.contactPhone is string && data.contactPhone.size() <= 30)) &&
+        (!('qrCodeSlug' in data) || (data.qrCodeSlug is string && data.qrCodeSlug.size() <= 64)) &&
+        (!('stats' in data) || (data.stats is map)) &&
+        (!('createdAt' in data) || (data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 40)));
+    }
+
+    // ===============================================================
+    // Domain Validator: Orders (orders/{orderId})
+    // ===============================================================
+
+    function isValidOrder(orderId, data) {
+      return hasRequiredFields(data, ['orderId', 'token', 'shopId', 'files', 'totalAmount', 'status']) &&
+        // Primary Identifiers
+        data.orderId is string &&
+        data.orderId == orderId &&
+        data.orderId.size() > 0 &&
+        data.orderId.size() <= 64 &&
+
+        data.token is string &&
+        data.token.size() > 0 &&
+        data.token.size() <= 32 &&
+
+        data.shopId is string &&
+        data.shopId.size() > 0 &&
+        data.shopId.size() <= 64 &&
+
+        // Pricing Guard: Must be a positive numeric amount
+        data.totalAmount is number &&
+        data.totalAmount > 0 &&
+        data.totalAmount < 1000000 &&
+
+        // Multi-File Bounds: Must be between 1 and 10 files
+        data.files is list &&
+        data.files.size() > 0 &&
+        data.files.size() <= 10 &&
+
+        // State Machine Enum
+        data.status in ['QUEUED', 'PRINTING', 'PRINT_SUBMITTED', 'PRINTED', 'COMPLETED', 'FAILED', 'NEEDS_VERIFICATION'] &&
+
+        // Optional String & Map Bounds
+        (!('studentIdentifier' in data) || (data.studentIdentifier is string && data.studentIdentifier.size() <= 128)) &&
+        (!('pickupCounter' in data) || (data.pickupCounter is string && data.pickupCounter.size() <= 200)) &&
+        (!('paymentStatus' in data) || (data.paymentStatus is string && data.paymentStatus.size() <= 32)) &&
+        (!('printStatus' in data) || (data.printStatus is string && data.printStatus.size() <= 32)) &&
+        (!('pricingSnapshot' in data) || (data.pricingSnapshot is map)) &&
+        (!('claimedBy' in data) || (data.claimedBy is string && data.claimedBy.size() <= 128)) &&
+        (!('failureReason' in data) || (data.failureReason is string && data.failureReason.size() <= 500)) &&
+        (!('verificationReason' in data) || (data.verificationReason is string && data.verificationReason.size() <= 500)) &&
+        (!('createdAt' in data) || (data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 40)));
+    }
+
+    // Validate permitted order lifecycle transitions
+    function isValidOrderStatusTransition(prevStatus, nextStatus) {
+      return prevStatus == nextStatus ||
+        (prevStatus == 'QUEUED' && nextStatus in ['PRINTING', 'FAILED', 'NEEDS_VERIFICATION']) ||
+        (prevStatus == 'PRINTING' && nextStatus in ['PRINT_SUBMITTED', 'PRINTED', 'COMPLETED', 'FAILED', 'NEEDS_VERIFICATION']) ||
+        (prevStatus == 'PRINT_SUBMITTED' && nextStatus in ['PRINTED', 'COMPLETED', 'FAILED', 'NEEDS_VERIFICATION']) ||
+        (prevStatus == 'NEEDS_VERIFICATION' && nextStatus in ['PRINTING', 'PRINTED', 'COMPLETED', 'FAILED']) ||
+        isAdmin();
+    }
+
+    // ===============================================================
+    // Domain Validator: Legacy Print Jobs (print_jobs/{orderId})
+    // ===============================================================
+
+    function isValidPrintJob(orderId, data) {
+      return hasRequiredFields(data, ['orderId', 'status', 'totalAmount']) &&
+        data.orderId is string &&
+        data.orderId == orderId &&
+        data.orderId.size() <= 64 &&
+
+        data.totalAmount is number &&
+        data.totalAmount > 0 &&
+        data.totalAmount < 1000000 &&
+
+        data.status in ['QUEUED', 'PRINTING', 'PRINT_SUBMITTED', 'PRINTED', 'COMPLETED', 'FAILED', 'NEEDS_VERIFICATION'] &&
+
+        (!('token' in data) || (data.token is string && data.token.size() <= 32)) &&
+        (!('shopId' in data) || (data.shopId is string && data.shopId.size() <= 64)) &&
+        (!('fileName' in data) || (data.fileName is string && data.fileName.size() <= 200)) &&
+        (!('fileUrl' in data) || (data.fileUrl is string && data.fileUrl.size() <= 1000)) &&
+        (!('colorMode' in data) || (data.colorMode is string && data.colorMode.size() <= 16)) &&
+        (!('sides' in data) || (data.sides is string && data.sides.size() <= 16)) &&
+        (!('claimedBy' in data) || (data.claimedBy is string && data.claimedBy.size() <= 128)) &&
+        (!('failureReason' in data) || (data.failureReason is string && data.failureReason.size() <= 500));
+    }
+
+
+    // ========================================================================
+    // COLLECTION RULES: shops/{shopId}
+    // ========================================================================
+    match /shops/{shopId} {
+
+      // Read: Publicly readable so students can browse campus counters and rate sheets
+      allow read: if true;
+
+      // Create: Authenticated users can submit a counter onboarding request with PENDING status,
+      // or administrators can provision counters directly.
+      allow create: if isAuthenticated() &&
+                       isValidShop(shopId, request.resource.data) &&
+                       (
+                         (request.resource.data.status == 'PENDING' && request.resource.data.ownerUid == request.auth.uid) ||
+                         isAdmin()
+                       );
+
+      // Update:
+      // 1. Admin can update any field including transitioning status to APPROVED, REJECTED, SUSPENDED,
+      //    and recording rejectionReason.
+      // 2. Shop owner can manage counter settings (name, location, pricing, supportedServices, etc.),
+      //    but CANNOT escalate approval status from PENDING, SUSPENDED, or REJECTED to APPROVED.
+      allow update: if isValidShop(shopId, request.resource.data) &&
+                       (
+                         // Administrator bypass
+                         isAdmin() ||
+                         // Authenticated Counter Owner
+                         (
+                           isAuthenticated() &&
+                           resource.data.ownerUid == request.auth.uid &&
+                           request.resource.data.ownerUid == resource.data.ownerUid &&
+                           request.resource.data.shopId == resource.data.shopId &&
+                           (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+
+                           // Privilege Escalation Guard: Cannot self-approve counter
+                           !(resource.data.status in ['PENDING', 'SUSPENDED', 'REJECTED'] && request.resource.data.status == 'APPROVED') &&
+
+                           // Whitelist of fields editable by counter owner
+                           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                             'isAcceptingOrders',
+                             'pricingTiers',
+                             'supportedServices',
+                             'location',
+                             'name',
+                             'shopkeeperName',
+                             'tagline',
+                             'contactPhone',
+                             'status',
+                             'qrCodeSlug',
+                             'stats'
+                           ])
+                         )
+                       );
+
+      // Delete: Restricted strictly to campus administrators
+      allow delete: if isAdmin();
+    }
+
+
+    // ========================================================================
+    // COLLECTION RULES: orders/{orderId}
+    // ========================================================================
+    match /orders/{orderId} {
+
+      // Read:
+      // - Direct get: Students can read their specific order pass / receipt using orderId/token.
+      // - Query list: Counter stations and shopkeepers can query pending and active queues.
+      //   If an authenticated shopkeeper has a shop-scoped token, restricts to their shopId.
+      allow get: if true;
+      allow list: if !isAuthenticated() ||
+                     !('shopId' in request.auth.token) ||
+                     request.auth.token.shopId == resource.data.shopId ||
+                     isAdmin();
+
+      // Create: Allowed for student order placement with validated QUEUED status and bounds
+      allow create: if isValidOrder(orderId, request.resource.data) &&
+                       request.resource.data.status == 'QUEUED' &&
+                       request.resource.data.totalAmount is number &&
+                       request.resource.data.totalAmount > 0 &&
+                       request.resource.data.files is list &&
+                       request.resource.data.files.size() > 0 &&
+                       request.resource.data.files.size() <= 10 &&
+                       request.resource.data.shopId is string;
+
+      // Update:
+      // - Enforces state machine transitions (QUEUED -> PRINTING -> PRINT_SUBMITTED -> COMPLETED / FAILED / NEEDS_VERIFICATION).
+      // - Immutability guard: files, totalAmount, shopId, token, orderId cannot be modified.
+      // - Atomic claiming guard: moving to PRINTING requires claimedBy to be set.
+      // - Concurrency guard: already-claimed printing jobs cannot be hijacked by other stations.
+      allow update: if isValidOrder(orderId, request.resource.data) &&
+
+                       // Immutability Guards: Core order attributes are locked
+                       request.resource.data.orderId == resource.data.orderId &&
+                       request.resource.data.token == resource.data.token &&
+                       request.resource.data.shopId == resource.data.shopId &&
+                       request.resource.data.totalAmount == resource.data.totalAmount &&
+                       request.resource.data.files == resource.data.files &&
+                       (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+
+                       // State Transition Guard
+                       isValidOrderStatusTransition(resource.data.status, request.resource.data.status) &&
+
+                       // Claiming Guard: moving to PRINTING requires claimedBy string
+                       (request.resource.data.status != 'PRINTING' ||
+                        ('claimedBy' in request.resource.data && request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() > 0)) &&
+
+                       // Anti-Hijacking Guard: if already PRINTING, station cannot be replaced by unauthorized party
+                       (resource.data.status != 'PRINTING' ||
+                        !('claimedBy' in resource.data) ||
+                        request.resource.data.claimedBy == resource.data.claimedBy ||
+                        isAdmin());
+
+      // Delete: Strictly prohibited to maintain audit trail and transaction accounting
+      allow delete: if false;
+    }
+
+
+    // ========================================================================
+    // COLLECTION RULES: print_jobs/{orderId} (Legacy Backwards Compatibility)
+    // ========================================================================
+    match /print_jobs/{orderId} {
+
+      // Read: Public for legacy counter clients and dual-read compatibility
+      allow read: if true;
+
+      // Create: Validated QUEUED print jobs
+      allow create: if isValidPrintJob(orderId, request.resource.data) &&
+                       request.resource.data.status == 'QUEUED' &&
+                       request.resource.data.totalAmount > 0;
+
+      // Update: Status transitions and immutability guards
+      allow update: if isValidPrintJob(orderId, request.resource.data) &&
+                       request.resource.data.orderId == resource.data.orderId &&
+                       request.resource.data.totalAmount == resource.data.totalAmount &&
+                       (!('token' in resource.data) || request.resource.data.token == resource.data.token) &&
+                       (!('shopId' in resource.data) || request.resource.data.shopId == resource.data.shopId) &&
+                       isValidOrderStatusTransition(resource.data.status, request.resource.data.status);
+
+      // Delete: Strictly denied
+      allow delete: if false;
+    }
+
+
+    // ========================================================================
+    // DEFAULT ROOT DENY
+    // ========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

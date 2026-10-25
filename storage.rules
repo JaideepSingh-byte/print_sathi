@@ -1,0 +1,38 @@
+rules_version = '2';
+
+/**
+ * ============================================================================
+ * PRINT-SATHI: Firebase Cloud Storage Security Rules
+ * ============================================================================
+ * 
+ * Strict Upload Guardrails:
+ * 1. Only PDF documents allowed (.pdf / application/pdf).
+ * 2. Maximum file size per document is strictly 20 MB.
+ * 3. Structured storage paths:
+ *    - `orders/{orderId}/{fileName}`
+ *    - `print_jobs/{orderId}/{fileName}` (legacy backwards compatibility)
+ * ============================================================================
+ */
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Multi-File Print Orders
+    match /orders/{orderId}/{fileName} {
+      // Public read for counter printing client and preview links
+      allow read: if true;
+
+      // Restrict upload to valid PDF files under 20MB
+      allow write: if request.resource.size <= 20 * 1024 * 1024
+                   && (request.resource.contentType == 'application/pdf' || fileName.matches('.*\\.pdf'));
+    }
+
+    // Legacy Single-File Print Jobs
+    match /print_jobs/{orderId}/{fileName} {
+      allow read: if true;
+
+      allow write: if request.resource.size <= 20 * 1024 * 1024
+                   && (request.resource.contentType == 'application/pdf' || fileName.matches('.*\\.pdf'));
+    }
+  }
+}

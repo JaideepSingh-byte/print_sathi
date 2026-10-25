@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Print-Sathi | Unattended Station & Management Console</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- =====================================================================
+       1. AUTHENTICATION VIEW: Integrated Login & Role Selection
+       ===================================================================== -->
+  <div id="authView" class="view-container">
+    <div class="auth-card-wrapper">
+      <!-- Brand Header -->
+      <div class="auth-brand-header">
+        <div class="auth-brand-icon">🖨️</div>
+        <h1 class="auth-brand-title">Print<span>Sathi</span> Desktop</h1>
+        <p class="auth-brand-sub">Campus Printing Spooler & Management System</p>
+      </div>
+
+      <!-- Role Selection Switcher -->
+      <div class="role-switcher">
+        <button id="tabRoleShopkeeper" class="role-tab active" type="button">
+          <span>🏪 Counter Shopkeeper</span>
+        </button>
+        <button id="tabRoleAdmin" class="role-tab" type="button">
+          <span>🛡️ Campus Administrator</span>
+        </button>
+      </div>
+
+      <!-- Error / Notice Box -->
+      <div id="authAlert" class="auth-alert hidden"></div>
+
+      <!-- PANEL A: Shopkeeper Login -->
+      <div id="shopkeeperLoginPanel" class="auth-panel">
+        <form id="shopkeeperLoginForm" class="auth-form">
+          <div class="form-group">
+            <label for="shopkeeperEmail">Counter Email Address</label>
+            <input 
+              type="email" 
+              id="shopkeeperEmail" 
+              class="styled-input" 
+              placeholder="e.g. counter@printsathi.campus or gmail" 
+              required 
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="shopkeeperPassword">Password</label>
+            <div class="password-wrapper">
+              <input 
+                type="password" 
+                id="shopkeeperPassword" 
+                class="styled-input" 
+                placeholder="Enter counter password" 
+                required 
+              />
+              <button type="button" id="toggleShopkeeperPw" class="pw-toggle-btn" title="Toggle visibility">👁️</button>
+            </div>
+          </div>
+
+          <button type="submit" id="btnShopkeeperLogin" class="btn-primary full-width">
+            <span>Sign In to Desk Console</span>
+          </button>
+        </form>
+
+        <div class="auth-footer-links">
+          <span>New counter shopkeeper?</span>
+          <button type="button" id="btnShowRegister" class="text-link">Register New Counter & Rates &rarr;</button>
+        </div>
+      </div>
+
+      <!-- PANEL B: Administrator Login -->
+      <div id="adminLoginPanel" class="auth-panel hidden">
+        <div class="admin-notice-pill">
+          <span>🔐 Campus Operations & Approvals Authority</span>
+        </div>
+
+        <form id="adminLoginForm" class="auth-form">
+          <div class="form-group">
+            <label for="adminUsername">Administrator Identity / Email</label>
+            <input 
+              type="text" 
+              id="adminUsername" 
+              class="styled-input" 
+              value="Jaideep Singh" 
+              placeholder="Jaideep Singh or admin.jaideep@printsathi.campus" 
+              required 
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="adminPassword">Admin Password</label>
+            <div class="password-wrapper">
+              <input 
+                type="password" 
+                id="adminPassword" 
+                class="styled-input" 
+                placeholder="Enter administrator password" 
+                required 
+              />
+              <button type="button" id="toggleAdminPw" class="pw-toggle-btn" title="Toggle visibility">👁️</button>
+            </div>
+          </div>
+
+          <button type="submit" id="btnAdminLogin" class="btn-primary btn-indigo full-width">
+            <span>Sign In as Campus Administrator</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- PANEL C: Shopkeeper Registration (Collapsible) -->
+      <div id="shopkeeperRegisterPanel" class="auth-panel hidden">
+        <div class="panel-section-title">
+          <h3>Register Campus Print Counter</h3>
+          <p>Submit counter details and rate card for administrator approval</p>
+        </div>
+
+        <form id="shopkeeperRegisterForm" class="auth-form">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="regFullName">Owner Full Name *</label>
+              <input type="text" id="regFullName" class="styled-input" placeholder="e.g. Ramesh Kumar" required />
+            </div>
+            <div class="form-group">
+              <label for="regMobile">10-Digit Mobile Phone *</label>
+              <input type="tel" id="regMobile" class="styled-input" placeholder="e.g. 9876543210" pattern="[0-9]{10}" required />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="regEmail">Login Email Address *</label>
+            <input type="email" id="regEmail" class="styled-input" placeholder="e.g. ramesh.print@gmail.com" required />
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="regPassword">Password *</label>
+              <input type="password" id="regPassword" class="styled-input" placeholder="Min 6 characters" minlength="6" required />
+            </div>
+            <div class="form-group">
+              <label for="regConfirmPassword">Confirm Password *</label>
+              <input type="password" id="regConfirmPassword" class="styled-input" placeholder="Re-enter password" required />
+            </div>
+          </div>
+
+          <div class="form-divider"><span>Counter Location Details</span></div>
+
+          <div class="form-group">
+            <label for="regShopName">Counter / Shop Name *</label>
+            <input type="text" id="regShopName" class="styled-input" placeholder="e.g. Cautley Bhavan Xerox Center" required />
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label for="regBuilding">Building / Hostel *</label>
+              <input type="text" id="regBuilding" class="styled-input" placeholder="e.g. Cautley Bhavan" required />
+            </div>
+            <div class="form-group">
+              <label for="regFloor">Floor</label>
+              <select id="regFloor" class="styled-select">
+                <option value="Ground Floor">Ground Floor</option>
+                <option value="1st Floor">1st Floor</option>
+                <option value="2nd Floor">2nd Floor</option>
+                <option value="Basement">Basement</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="regRoom">Room / Stall</label>
+              <input type="text" id="regRoom" class="styled-input" placeholder="Shop 1" />
+            </div>
+          </div>
+
+          <div class="form-divider"><span>Pricing Rates (₹ per page)</span></div>
+
+          <div class="pricing-tier-grid">
+            <div class="tier-card">
+              <div class="tier-title">1 – 49 pages</div>
+              <div class="tier-inputs">
+                <div><small>B&W 1-side</small><input type="number" step="0.25" id="rate_bw_s_t1" value="2.0" class="mini-input" /></div>
+                <div><small>B&W 2-side</small><input type="number" step="0.25" id="rate_bw_d_t1" value="1.5" class="mini-input" /></div>
+                <div><small>Color 1-side</small><input type="number" step="0.5" id="rate_col_s_t1" value="10.0" class="mini-input" /></div>
+                <div><small>Color 2-side</small><input type="number" step="0.5" id="rate_col_d_t1" value="8.0" class="mini-input" /></div>
+              </div>
+            </div>
+
+            <div class="tier-card">
+              <div class="tier-title">50 – 99 pages</div>
+              <div class="tier-inputs">
+                <div><small>B&W 1-side</small><input type="number" step="0.25" id="rate_bw_s_t2" value="1.75" class="mini-input" /></div>
+                <div><small>B&W 2-side</small><input type="number" step="0.25" id="rate_bw_d_t2" value="1.25" class="mini-input" /></div>
+                <div><small>Color 1-side</small><input type="number" step="0.5" id="rate_col_s_t2" value="8.0" class="mini-input" /></div>
+                <div><small>Color 2-side</small><input type="number" step="0.5" id="rate_col_d_t2" value="6.0" class="mini-input" /></div>
+              </div>
+            </div>
+
+            <div class="tier-card">
+              <div class="tier-title">100+ pages</div>
+              <div class="tier-inputs">
+                <div><small>B&W 1-side</small><input type="number" step="0.25" id="rate_bw_s_t3" value="1.5" class="mini-input" /></div>
+                <div><small>B&W 2-side</small><input type="number" step="0.25" id="rate_bw_d_t3" value="1.0" class="mini-input" /></div>
+                <div><small>Color 1-side</small><input type="number" step="0.5" id="rate_col_s_t3" value="6.0" class="mini-input" /></div>
+                <div><small>Color 2-side</small><input type="number" step="0.5" id="rate_col_d_t3" value="5.0" class="mini-input" /></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-row" style="margin-top: 1.25rem;">
+            <button type="submit" id="btnSubmitRegistration" class="btn-primary">
+              <span>Submit Counter Registration</span>
+            </button>
+            <button type="button" id="btnCancelRegister" class="action-btn">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- =====================================================================
+       2. PENDING APPROVAL VIEW (Shown when shopkeeper has pending/suspended status)
+       ===================================================================== -->
+  <div id="pendingView" class="view-container hidden">
+    <div class="pending-card">
+      <div id="pendingStatusIcon" class="pending-icon">⏳</div>
+      <div id="pendingStatusBadge" class="badge badge-warning">Awaiting Approval</div>
+      <h2 id="pendingShopTitle" class="pending-title">Registration Submitted</h2>
+      <p id="pendingShopMsg" class="pending-msg">
+        Your campus print counter has been registered and submitted. The campus administrator (Jaideep Singh)
+        will review your location, contact details, and custom rate card before activation.
+      </p>
+
+      <div class="pending-details-box">
+        <div class="detail-row">
+          <span>Shop Name:</span>
+          <strong id="pendingDetailsName">—</strong>
+        </div>
+        <div class="detail-row">
+          <span>Location:</span>
+          <strong id="pendingDetailsLocation">—</strong>
+        </div>
+        <div class="detail-row">
+          <span>Registered Owner:</span>
+          <strong id="pendingDetailsOwner">—</strong>
+        </div>
+        <div class="detail-row">
+          <span>Current Status:</span>
+          <strong id="pendingDetailsStatus" style="color: #f59e0b;">PENDING</strong>
+        </div>
+      </div>
+
+      <div class="btn-row" style="justify-content: center; gap: 1rem; margin-top: 1.5rem;">
+        <button id="btnCheckShopStatus" class="btn-primary" type="button">
+          🔄 Refresh Approval Status
+        </button>
+        <button id="btnPendingLogout" class="action-btn danger-btn" type="button">
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- =====================================================================
+       3. DESK CONSOLE VIEW: Unattended Spooler & Hardware Print Client
+       ===================================================================== -->
+  <div id="deskConsoleView" class="view-container hidden">
+    <div class="console-container">
+      <!-- 1. TOP HEADER WITH VERIFIED SHOP IDENTITY -->
+      <header class="console-header">
+        <div class="brand-box">
+          <div class="brand-logo">🖨️</div>
+          <div>
+            <h1 class="brand-name">PrintSathi <span>DeskConsole</span></h1>
+            <p id="deskVerifiedShopSub" class="brand-sub">Unattended Campus Spooler • Station Client</p>
+          </div>
+        </div>
+
+        <div class="shop-identity-badge">
+          <div class="identity-info">
+            <span id="deskShopBadgeName" class="shop-name-pill">🏪 Main Xerox</span>
+            <span id="deskShopLocationPill" class="shop-loc-pill">Student Plaza</span>
+          </div>
+          <button id="btnDeskLogout" class="action-btn danger-btn-sm" title="Sign out of counter">
+            Sign Out
+          </button>
+        </div>
+
+        <div class="header-badges">
+          <div id="firebaseBadge" class="badge badge-success">
+            <span class="dot pulse"></span>
+            <span id="firebaseStatusText">Firebase: Connected</span>
+          </div>
+          <div id="modeBadge" class="badge badge-warning">
+            <span>🛡️ DRY-RUN: Virtual Spooling</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- 2. CONTROL CENTER BAR -->
+      <section class="control-panel">
+        <!-- Target Shop / Counter Display -->
+        <div class="control-group">
+          <label for="shopSelect">Station Pickup Counter</label>
+          <select id="shopSelect" class="styled-select" disabled>
+            <option value="CURRENT_SHOP">Loading verified counter...</option>
+          </select>
+        </div>
+
+        <!-- Printer Selector -->
+        <div class="control-group">
+          <label for="printerSelect">Local Windows Printer</label>
+          <select id="printerSelect" class="styled-select">
+            <option value="">Detecting Windows printers...</option>
+          </select>
+        </div>
+
+        <!-- Auto-Print Toggle -->
+        <div class="control-group">
+          <label>Automatic Spooling</label>
+          <button id="toggleAutoPrintBtn" class="toggle-btn active">
+            <span class="toggle-icon">⚡</span>
+            <span id="autoPrintText">Auto-Print: ON</span>
+          </button>
+        </div>
+
+        <!-- Dry-Run Toggle -->
+        <div class="control-group">
+          <label>Print Safety Mode</label>
+          <button id="toggleDryRunBtn" class="toggle-btn dryrun-active">
+            <span class="toggle-icon">🛡️</span>
+            <span id="dryRunText">Dry-Run: ON (Safe)</span>
+          </button>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="control-group" style="margin-left: auto;">
+          <label>Emergency & Tools</label>
+          <div class="btn-row">
+            <button id="pauseQueueBtn" class="action-btn warning-btn" title="Pause / Resume Queue Processing">
+              ⏸️ Pause
+            </button>
+            <button id="openFolderBtn" class="action-btn" title="Open OS Temp Spool Folder">
+              📁 Spool Folder
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. CURRENTLY PRINTING ACTIVE HERO (Hidden if idle) -->
+      <section id="activeJobSection" class="active-job-card hidden">
+        <div class="active-job-header">
+          <div class="spinner"></div>
+          <div>
+            <span class="active-job-pill">CURRENTLY PRINTING</span>
+            <h2 id="activeJobTitle" class="active-job-title">Processing Order #PS-0000</h2>
+          </div>
+        </div>
+        <div class="active-job-specs">
+          <span id="activeJobFile" class="spec-tag">📄 document.pdf</span>
+          <span id="activeJobCopies" class="spec-tag">📑 1 Copy</span>
+          <span id="activeJobColor" class="spec-tag">🎨 B&W</span>
+          <span id="activeJobSides" class="spec-tag">🔄 Single-Sided</span>
+          <span id="activeJobPages" class="spec-tag">📊 All Pages</span>
+        </div>
+      </section>
+
+      <!-- 4. MAIN SPLIT CONTENT (Queue on left, Live Log on right) -->
+      <main class="main-split">
+        <!-- Left: Incoming Live Queue -->
+        <div class="queue-panel">
+          <div class="panel-title-bar">
+            <div class="title-with-counter">
+              <button id="tabPendingBtn" class="tab-pill active">Pending (<span id="queueCount">0</span>)</button>
+              <button id="tabCompletedBtn" class="tab-pill">Completed (<span id="completedCount">0</span>)</button>
+            </div>
+            <span id="queueSubtext" class="subtext">Auto-processed in FIFO order</span>
+          </div>
+
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Token</th>
+                  <th>Documents</th>
+                  <th>Copies / Mode</th>
+                  <th>Sheets</th>
+                  <th>Received</th>
+                </tr>
+              </thead>
+              <tbody id="queueTableBody">
+                <tr class="empty-row">
+                  <td colspan="5">
+                    <div class="empty-state">
+                      <span class="empty-icon">☕</span>
+                      <p>Queue is empty. Waiting for student paid print jobs...</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Real-time Spooler Activity Logs -->
+        <div class="logs-panel">
+          <div class="panel-title-bar">
+            <h3>System Audit & Spooler Feed</h3>
+            <button id="clearLogsBtn" class="link-btn">Clear Feed</button>
+          </div>
+          <div id="logFeed" class="terminal-feed">
+            <!-- Dynamically populated log entries -->
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+
+  <!-- =====================================================================
+       4. ADMINISTRATOR PORTAL VIEW: Approvals, Audit & Direct Provisioning
+       ===================================================================== -->
+  <div id="adminPortalView" class="view-container hidden">
+    <div class="admin-wrapper">
+      <!-- Admin Header Bar -->
+      <header class="admin-header">
+        <div class="admin-brand-box">
+          <div class="admin-brand-icon">🛡️</div>
+          <div>
+            <h1 class="admin-brand-title">PrintSathi <span>AdminPortal</span></h1>
+            <p class="admin-brand-sub">Campus Xerox Operations & Multi-Shop Administration</p>
+          </div>
+        </div>
+
+        <div class="admin-session-box">
+          <span class="admin-identity-pill">
+            👤 <span id="adminDisplayName">Jaideep Singh</span> (Administrator)
+          </span>
+          <button id="btnAdminLogout" class="action-btn danger-btn-sm" type="button">
+            Sign Out
+          </button>
+        </div>
+      </header>
+
+      <!-- Admin Navigation Tabs & Filters -->
+      <div class="admin-nav-bar">
+        <div class="admin-tabs">
+          <button id="adminTabPending" class="admin-tab active" type="button">
+            Pending Review (<span id="countPending">0</span>)
+          </button>
+          <button id="adminTabApproved" class="admin-tab" type="button">
+            Approved & Active (<span id="countApproved">0</span>)
+          </button>
+          <button id="adminTabSuspended" class="admin-tab" type="button">
+            Suspended (<span id="countSuspended">0</span>)
+          </button>
+          <button id="adminTabRejected" class="admin-tab" type="button">
+            Rejected (<span id="countRejected">0</span>)
+          </button>
+          <button id="adminTabAll" class="admin-tab" type="button">
+            All Counters (<span id="countAll">0</span>)
+          </button>
+          <button id="adminTabProvision" class="admin-tab provision-tab" type="button">
+            + Provision Counter
+          </button>
+        </div>
+
+        <div class="admin-search-box">
+          <input 
+            type="text" 
+            id="adminSearchInput" 
+            class="styled-input mini" 
+            placeholder="🔍 Filter by shop name, building..." 
+          />
+        </div>
+      </div>
+
+      <!-- MAIN SHOPS AUDIT LIST -->
+      <section id="adminShopsSection" class="admin-content-section">
+        <div id="adminShopsList" class="shops-grid">
+          <!-- Dynamically populated shop audit cards -->
+        </div>
+      </section>
+
+      <!-- DIRECT PROVISIONING PANEL (Initially hidden) -->
+      <section id="adminProvisionSection" class="admin-content-section hidden">
+        <div class="provision-card">
+          <div class="panel-section-title">
+            <h3>Directly Provision Campus Print Counter</h3>
+            <p>Onboard and instantly activate a verified counter in university buildings</p>
+          </div>
+
+          <form id="adminProvisionForm" class="auth-form">
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="provShopName">Shop / Counter Name *</label>
+                <input type="text" id="provShopName" class="styled-input" placeholder="e.g. Ganga Bhavan Xerox" required />
+              </div>
+              <div class="form-group">
+                <label for="provBuilding">Building / Hostel *</label>
+                <input type="text" id="provBuilding" class="styled-input" placeholder="e.g. Ganga Bhavan" required />
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="provFloor">Floor</label>
+                <select id="provFloor" class="styled-select">
+                  <option value="Ground Floor">Ground Floor</option>
+                  <option value="1st Floor">1st Floor</option>
+                  <option value="2nd Floor">2nd Floor</option>
+                  <option value="Basement">Basement</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="provRoom">Room / Stall</label>
+                <input type="text" id="provRoom" class="styled-input" placeholder="Stall 2" />
+              </div>
+              <div class="form-group">
+                <label for="provPhone">Contact Phone</label>
+                <input type="tel" id="provPhone" class="styled-input" placeholder="9876543210" />
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="provOwnerName">Operator Name</label>
+                <input type="text" id="provOwnerName" class="styled-input" placeholder="Staff in-charge" />
+              </div>
+              <div class="form-group">
+                <label for="provOwnerEmail">Operator Email</label>
+                <input type="email" id="provOwnerEmail" class="styled-input" placeholder="operator@campus.edu" />
+              </div>
+            </div>
+
+            <div class="btn-row" style="margin-top: 1rem;">
+              <button type="submit" class="btn-primary btn-indigo">
+                Provision & Activate Counter
+              </button>
+              <button type="button" id="btnCancelProvision" class="action-btn">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- REJECTION FEEDBACK MODAL (Administrator Only) -->
+      <div id="rejectionModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="rejectionModalTitle">
+        <div class="modal-box">
+          <h3 id="rejectionModalTitle">Reject Counter Registration</h3>
+          <p id="rejectionModalShopName" class="subtext">Counter: —</p>
+          
+          <div class="form-group" style="margin-top: 1rem;">
+            <label for="rejectionReasonInput">Reason for Rejection * (Visible to shopkeeper)</label>
+            <textarea 
+              id="rejectionReasonInput" 
+              class="styled-textarea" 
+              rows="3" 
+              placeholder="e.g. Unverified campus location, duplicate registration, or invalid pricing rates."
+              required
+            ></textarea>
+          </div>
+
+          <div class="btn-row" style="margin-top: 1.25rem;">
+            <button id="btnConfirmReject" class="action-btn danger-btn" type="button">
+              Confirm Rejection
+            </button>
+            <button id="btnCancelRejectModal" class="action-btn" type="button">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

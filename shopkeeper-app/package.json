@@ -1,0 +1,16 @@
+{
+  "name": "print-sathi-shopkeeper",
+  "version": "1.0.0",
+  "description": "Unattended Shopkeeper Desktop Printing Client for Print-Sathi",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase": "^13.1.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
